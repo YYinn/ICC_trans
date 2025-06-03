@@ -379,7 +379,7 @@ class WindowAttention(nn.Module):
     <https://arxiv.org/abs/2103.14030>"
     https://github.com/microsoft/Swin-Transformer
     """
-
+ 
     def __init__(
         self,
         dim: int,
