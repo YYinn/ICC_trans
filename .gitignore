@@ -7,3 +7,5 @@ Data
 preprocess
 playground.ipynb
 readme.md
+log_previous
+*.npy

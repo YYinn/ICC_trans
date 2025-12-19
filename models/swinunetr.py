@@ -78,6 +78,7 @@ class SwinUNETR(nn.Module):
         spatial_dims: int = 3,
         downsample="merging",
         use_v2=False,
+        return_feat: bool = False
     ) -> None:
         """
         Args:
@@ -263,6 +264,8 @@ class SwinUNETR(nn.Module):
         self.head = nn.Linear(48, out_channels) if out_channels > 0 else nn.Identity()
         self.sigmoid = nn.Sigmoid()
 
+        self.return_feat = return_feat
+
         
     def load_from(self, weights):
         with torch.no_grad():
@@ -338,12 +341,15 @@ class SwinUNETR(nn.Module):
         dec1 = self.decoder3(dec2, enc2)
         dec0 = self.decoder2(dec1, enc1)
         out = self.decoder1(dec0, enc0)
-        out = self.avgpool(out)
-        out = torch.flatten(out, 1)
-
+        out2 = self.avgpool(out)
+        out0 = torch.flatten(out2, 1)
+        # print(x_in.shape, hidden_states_out[0].shape, hidden_states_out[1].shape, hidden_states_out[2].shape, hidden_states_out[3].shape, hidden_states_out[4].shape)
+        # print(enc0.shape, enc1.shape, enc2.shape, enc3.shape, dec4.shape, dec3.shape, dec2.shape, dec1.shape, dec0.shape, out.shape, out2.shape, out0.shape)
+# /
         # print(out.shape)
-        logits = self.sigmoid(self.head(out))
-        
+        logits = self.sigmoid(self.head(out0))
+        if self.return_feat:
+            return logits, [enc0, enc1, enc2, enc3, dec4, dec3, dec2, dec1, dec0, out, out2, out0]
         return logits
 
 

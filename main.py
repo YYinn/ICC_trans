@@ -11,7 +11,7 @@ import torch
 from tensorboardX import SummaryWriter
 
 from trainer import run_training
-from test import run_test
+from test import run_test, run_test_single
 
 parser = argparse.ArgumentParser()
 
@@ -43,7 +43,7 @@ parser.add_argument('--in_channels', default=7, type=int, help='number of input 
 
 ## log
 parser.add_argument('--pretrained_dir', default='', type=str, help='pretrained checkpoint directory')
-parser.add_argument('--logs', default='/media/yinn147/Data/ICC_transformer/log_new/', type=str, help='logging path (dont forget / at last)')
+parser.add_argument('--logs', default='/media/yinn/Data/ICC_transformer/log_new/', type=str, help='logging path (dont forget / at last)')
 parser.add_argument('--note', default='_test_', type=str, help='experiment setting notification')
 
 ### evalutaion 
@@ -86,6 +86,7 @@ def main():
         logging.info('Testing for ' + args.pretrained_dir)
 
         run_test(args)
+        # run_test_single(args)
     else:
         if args.multi_use:
             args.logdir = f'{args.logs}multimod_{args.model_name}_{args.resample[0]}{args.resample[1]}{args.resample[2]}_{datetime.datetime.now().isoformat()[:19]}/'

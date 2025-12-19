@@ -42,6 +42,41 @@ def get_loader(args, fold=0):
 
     return train_data, valid_data, in_test_data, ex_test_data
 
+
+def get_loader_test(args, fold=0):
+
+    train_img_list, train_label_list, val_img_list, val_label_list = json_reader(json_path=args.train_json_list, fold=fold)
+
+    train_ds = Datareader(train_img_list, train_label_list, transform='train', resample=args.resample)
+    valid_ds = Datareader(val_img_list, val_label_list, transform='valid', resample=args.resample)
+
+    train_data = DataLoader(train_ds, batch_size=args.batch_size, shuffle=False, worker_init_fn=seed_torch(args.seed))
+    valid_data = DataLoader(valid_ds, batch_size=args.batch_size, shuffle=False, worker_init_fn=seed_torch(args.seed))   
+
+    # trainval_img_list, trainval_label_list = json_reader_test(json_path=args.train_json_list, key='training')
+    # trainval_ds = Datareader(trainval_img_list, trainval_label_list, transform='train', resample=args.resample)
+    # trainval_ds = DataLoader(trainval_ds, batch_size=args.batch_size, shuffle=False, worker_init_fn=seed_torch(args.seed))
+
+
+    in_test_img_list, in_test_label_list = json_reader_test(json_path=args.intest_json_list)
+    in_test_ds = Datareader(in_test_img_list, in_test_label_list, transform='valid', resample=args.resample)
+    in_test_data = DataLoader(in_test_ds, batch_size=args.batch_size, shuffle=False, worker_init_fn=seed_torch(args.seed))
+
+    ex_test_img_list, ex_test_label_list = json_reader_test(json_path=args.extest_json_list)
+    ex_test_ds = Datareader(ex_test_img_list, ex_test_label_list, transform='valid', resample=args.resample)
+    ex_test_data = DataLoader(ex_test_ds, batch_size=args.batch_size, shuffle=False, worker_init_fn=seed_torch(args.seed))
+
+    return train_data, valid_data, train_ds, in_test_data, ex_test_data
+
+
+def get_loader_test_single(args, fold=0, wolable=False):
+
+    ex_test_img_list, ex_test_label_list = json_reader_test(json_path=args.extest_json_list, wolabel=wolable)
+    ex_test_ds = Datareader(ex_test_img_list, ex_test_label_list, transform='valid', resample=args.resample, wolable=wolable)
+    ex_test_data = DataLoader(ex_test_ds, batch_size=args.batch_size, shuffle=False, worker_init_fn=seed_torch(args.seed))
+
+    return ex_test_data
+
 def zscore_normalize(X):
     mean = np.mean(X)
     std = np.std(X)
@@ -93,7 +128,7 @@ val_transforms = Compose(
 
 
 class Datareader(Dataset):
-    def __init__(self, img_list, label_list, transform=None, resample=None):
+    def __init__(self, img_list, label_list, transform=None, resample=None, wolable=False):
         self.img_list = img_list 
         self.label_list = label_list
         if transform == 'train':
@@ -101,6 +136,7 @@ class Datareader(Dataset):
         else:
             self.transform = val_transforms
         self.resample = resample
+        self.wolable = wolable
 
     def __getitem__(self, item):
         multi_img = []
@@ -115,13 +151,18 @@ class Datareader(Dataset):
             multi_img.append(img)
         multi_img = torch.tensor(np.concatenate(multi_img))
         # print(multi_img.shape) #[7, 32, 128, 128])
+        # if self.img_list[item][0] in ('/media/yinn147/Data/ICC_transformer/Preprocessed_data/data2508/icc_adu_ROI/87/A.npy', '/media/yinn147/Data/ICC_transformer/Preprocessed_data/data2508/icc_adu_ROI/136/A.npy', '/media/yinn147/Data/ICC_transformer/Preprocessed_data/data2508/icc_adu_ROI/140/A.npy'):
+            # print(self.img_list[item][0])
+            # breakpoint()
+        if not self.wolable:
+            label = self.label_list[item]
+            label = torch.tensor(label)
 
-        label = self.label_list[item]
-        label = torch.tensor(label)
-
-        return multi_img, label.float(), self.img_list[item][0]
+            return multi_img, label.float(), self.img_list[item][0]
+        else:
+            return multi_img, self.img_list[item][0]
     def __len__(self):
-        return len(self.label_list)
+        return len(self.img_list)
 
 
 
@@ -155,19 +196,23 @@ def json_reader(json_path, fold=0, key='training'):
     return train_img_list, train_label_list, val_img_list, val_label_list
 
 
-def json_reader_test(json_path):
+def json_reader_test(json_path, wolabel=False, key='test'):
     with open(json_path) as f:
         json_data = json.load(f)
-    json_data = json_data['test']
+    json_data = json_data[key]
     test_img_list = []
     test_label_list = []
 
     for d in json_data:
         test_img_list.append(d['img_path'])
-        test_label_list.append(d['label'])
+        if not wolabel:
+            test_label_list.append(d['label'])
 
     print('test len', len(test_img_list))
     test_img_list = np.array(test_img_list)
-    test_label_list = np.array(test_label_list)
+    if not wolabel:
+        test_label_list = np.array(test_label_list)
     
-    return test_img_list, test_label_list
+        return test_img_list, test_label_list
+    else:
+        return test_img_list, None

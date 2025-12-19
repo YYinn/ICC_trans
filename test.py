@@ -12,8 +12,8 @@ from models.mymodel import SwinTrans
 from models.mymodel1_4m import mymodel
 from models.swinunetr import SwinUNETR
 from optimizers.lr_scheduler import LinearWarmupCosineAnnealingLR
-from utils.dataloader import get_loader
-from train_one_epoch import train_epoch, val_epoch, test_epoch
+from utils.dataloader import get_loader, get_loader_test, get_loader_test_single
+from train_one_epoch import train_epoch, val_epoch, test_epoch, test_epoch_wolabel
 from sklearn.metrics import (accuracy_score, f1_score, precision_score,
                              recall_score, roc_auc_score)
 
@@ -32,7 +32,7 @@ def get_ensem_result(pred, label):
 
     return acc, f1, pre, recall, auc
 
-def initmodel(args, fold):
+def initmodel(args, fold, return_feat=False):
 
     #######################################################
     ###################### model ##########################
@@ -50,6 +50,7 @@ def initmodel(args, fold):
                         out_channels=args.out_channels,
                         feature_size=args.feature_size,
                         use_checkpoint=args.use_checkpoint,
+                        return_feat=return_feat,
                         )
         logging.info(f'Model:SwinTrans input_channel : {args.in_channels}')
     elif args.model_name == 'cnn':
@@ -118,20 +119,22 @@ def run_test(args):
 
     avg_inter_pred = []
     avg_exter_pred = []
+    avg_trainval_pred = []
     for fold in range(0, 5):
         #############################################################################
         ######################### Step 1. Initialize model ##########################
         #############################################################################
-        model = initmodel(args, fold)
+        model = initmodel(args, fold, return_feat=True)
 
         #############################################################################
         ############################ Step 2. Load Image #############################
         #############################################################################
         
         #---------- B. loader all ####################### 
-        train_loader, val_loader, in_test_loader, ex_test_loader = get_loader(args, fold)
+        train_loader, val_loader, trainval_loader, in_test_loader, ex_test_loader = get_loader_test(args, fold)
 
         logging.info(f'val dataset {len(val_loader)}')
+        logging.info(f'val dataset {len(trainval_loader)}')
         logging.info(f'internal test dataset {len(in_test_loader)}')
         logging.info(f'external test dataset {len(ex_test_loader)}')
 
@@ -144,7 +147,7 @@ def run_test(args):
                                                                     fold=fold,
                                                                     multi_use=args.multi_use
                                                                     )################################################################
-
+        
         val_acc, val_f1, val_pre, val_recall, val_auc, val_pred ,val_label, val_path = test_epoch(model,
                                                                     val_loader,
                                                                     args=args,
@@ -152,7 +155,14 @@ def run_test(args):
                                                                     multi_use=args.multi_use
                                                                     )
         logging.info(f'🟢 val : fold {fold}, | accuracy : {val_acc:5.4f} | auc : {val_auc:5.4f} | f1 : {val_f1:5.4f} | pre : {val_pre:5.4f} | recall : {val_recall:5.4f}')
-
+        # trainval_acc, trainval_f1, trainval_pre, trainval_recall, trainval_auc, trainval_pred, trainval_label, trainval_path = test_epoch(model,
+        #                                                             trainval_loader,
+        #                                                             args=args,
+        #                                                             fold=fold,
+        #                                                             multi_use=args.multi_use
+        #                                                             )################################################################
+        # logging.info(f'🟢 train+val : fold {fold}, | accuracy : {trainval_acc:5.4f} | auc : {trainval_auc:5.4f} | f1 : {trainval_f1:5.4f} | pre : {trainval_pre:5.4f} | recall : {trainval_recall:5.4f}')
+        
         intertest_acc, intertest_f1, intertest_pre, intertest_recall, intertest_auc, intertest_pred, intertest_label, intertest_path = test_epoch(model,
                                                                     in_test_loader,
                                                                     args=args,
@@ -171,6 +181,7 @@ def run_test(args):
 
         save_result(train_path, train_label, train_pred, fold, 'train', args)
         save_result(val_path, val_label, val_pred, fold, 'val', args)
+        save_result(np.concatenate((train_path, val_path)), np.concatenate((train_label, val_label)), np.concatenate((train_pred, val_pred)), fold, 'train_val', args)
         save_result(intertest_path, intertest_label, intertest_pred, fold, 'internal_test', args)
         save_result(extertest_path, extertest_label, extertest_pred, fold, 'external_test', args)
 
@@ -183,6 +194,7 @@ def run_test(args):
 
         avg_inter_pred.append(intertest_pred)
         avg_exter_pred.append(extertest_pred)
+        # avg_trainval_pred.append(trainval_pred)
 
     avg_val_acc /= 5
     avg_val_auc /= 5
@@ -197,6 +209,13 @@ def run_test(args):
     logging.info(f'🟢 avg_extertest : accuracy : {avg_ex_test_acc} | auc : {avg_ex_test_auc}')
 
     logging.info('======================== ensemble of 5 folds =======================')
+    # avg_trainval_pred = np.array(avg_trainval_pred)
+    # avg_trainval_pred = avg_trainval_pred.mean(0)
+    # avg_trainval_acc, avg_trainval_f1, avg_trainval_pre, avg_trainval_recall, avg_trainval_auc = get_ensem_result(avg_trainval_pred, trainval_label)
+    # save_result(trainval_path, trainval_label, avg_trainval_pred, 'ensem', 'trainval', args)
+    # logging.info(f'🟢 trainval: accuracy : {avg_trainval_acc:5.4f} | auc : {avg_trainval_auc:5.4f} | f1 : {avg_trainval_f1:5.4f} | pre : {avg_trainval_pre:5.4f} | recall : {avg_trainval_recall:5.4f}')
+
+
     avg_inter_pred = np.array(avg_inter_pred)
     avg_inter_pred = avg_inter_pred.mean(0)
     ensem_intertest_acc, ensem_intertest_f1, ensem_intertest_pre, ensem_intertest_recall, ensem_intertest_auc = get_ensem_result(avg_inter_pred, intertest_label)
@@ -210,6 +229,56 @@ def run_test(args):
     save_result(extertest_path, extertest_label, avg_exter_pred, 'ensem', 'ensemble_external_test', args)
     logging.info(f'🟢 ensemble_extertest : accuracy : {ensem_extertest_acc:5.4f} | auc : {ensem_extertest_auc:5.4f} | f1 : {ensem_extertest_f1:5.4f} | pre : {ensem_extertest_pre:5.4f} | recall : {ensem_extertest_recall:5.4f}')
 
+
+
+
+
+def run_test_single(args):
+    logging.info('############################## Start Testing ######################################')
+    for fold in range(0, 5):
+        #############################################################################
+        ######################### Step 1. Initialize model ##########################
+        #############################################################################
+        model = initmodel(args, fold, return_feat=True)
+
+        #############################################################################
+        ############################ Step 2. Load Image #############################
+        #############################################################################
+        
+        #---------- B. loader all ####################### 
+        ex_test_loader = get_loader_test_single(args, fold, wolable=False)
+        logging.info(f'external test dataset {len(ex_test_loader)}')
+
+        ################################################################
+        ############################ VAL ###############################
+        # w label
+        extertest_acc, extertest_f1, extertest_pre, extertest_recall, extertest_auc, extertest_pred, extertest_label, extertest_path = test_epoch(model,
+                                                                    ex_test_loader,
+                                                                    args=args,
+                                                                    fold=fold,
+                                                                    multi_use=args.multi_use
+                                                                    )
+        logging.info(f'🟢 extertest : fold {fold}, | accuracy : {extertest_acc:5.4f} | auc : {extertest_auc:5.4f} | f1 : {extertest_f1:5.4f} | pre : {extertest_pre:5.4f} | recall : {extertest_recall:5.4f}')
+        # wo label
+        # extertest_pred, extertest_path = test_epoch_wolabel(model,
+        #                                                             ex_test_loader,
+        #                                                             args=args,
+        #                                                             fold=fold,
+        #                                                             multi_use=args.multi_use
+        #                                                             )
+        logging.info(f'🟢 extertest : fold {fold}')
+
+        path_simple = extertest_path.copy()
+        for i in range(extertest_path.shape[0]):
+            path_simple[i] = extertest_path[i].split('/')[-2]
+        path_simple = np.expand_dims(path_simple, 1)
+        predict = np.expand_dims(extertest_pred, 1)
+        print( path_simple.shape, predict.shape )
+        
+        info = np.hstack((path_simple, predict))
+        info_df = pd.DataFrame(info, columns=['path', 'predict'])
+        info_df.to_csv(os.path.join(args.logdir, f'test_fold{fold}.csv'), index=False)
+        print(info.shape)
 
 
 
